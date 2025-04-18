@@ -16,6 +16,26 @@ func NewHandler(authService service.AuthService) *Handler {
 	return &Handler{authService: authService}
 }
 
+type RegisterRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	var req RegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "неверный запрос", http.StatusBadRequest)
+		return
+	}
+	token, err := h.authService.Register(req.Username, req.Password)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"token": token})
+}
+
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -57,6 +77,5 @@ func (h *Handler) Welcome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Если токен валиден, возвращаем приветствие.
 	w.Write([]byte("Добро пожаловать!"))
 }

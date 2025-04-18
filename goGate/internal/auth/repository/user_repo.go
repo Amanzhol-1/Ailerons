@@ -6,7 +6,8 @@ import (
 )
 
 type InMemoryUserRepo struct {
-	users map[string]*domain.User
+	users  map[string]*domain.User
+	nextID int64
 }
 
 func NewInMemoryUserRepo() *InMemoryUserRepo {
@@ -22,4 +23,14 @@ func (repo *InMemoryUserRepo) FindByUsername(username string) (*domain.User, err
 		return nil, errors.New("пользователь не найден")
 	}
 	return user, nil
+}
+
+func (repo *InMemoryUserRepo) Create(u *domain.User) error {
+	if _, exists := repo.users[u.Username]; exists {
+		return errors.New("пользователь уже существует")
+	}
+	u.ID = repo.nextID
+	repo.nextID++
+	repo.users[u.Username] = u
+	return nil
 }

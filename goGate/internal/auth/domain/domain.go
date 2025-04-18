@@ -8,4 +8,5 @@ type User struct {
 
 type UserRepository interface {
 	FindByUsername(username string) (*User, error)
+	Create(user *User) error
 }

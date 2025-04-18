@@ -13,6 +13,7 @@ var jwtKey = []byte("your_secret_key")
 type AuthService interface {
 	Login(username, password string) (string, error)
 	ValidateToken(tokenStr string) (*jwt.Token, error)
+	Register(username, password string) (string, error)
 }
 
 type authService struct {
@@ -65,4 +66,21 @@ func (s *authService) ValidateToken(tokenStr string) (*jwt.Token, error) {
 		return nil, errors.New("недействительный токен")
 	}
 	return token, nil
+}
+
+func (s *authService) Register(username, password string) (string, error) {
+	if _, err := s.userRepo.FindByUsername(username); err == nil {
+		return "", errors.New("пользователь уже существует")
+	}
+
+	// TODO: Hash password
+	newUser := &domain.User{
+		Username: username,
+		Password: password,
+	}
+	if err := s.userRepo.Create(newUser); err != nil {
+		return "", err
+	}
+
+	return s.Login(username, password)
 }

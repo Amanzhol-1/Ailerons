@@ -17,6 +17,7 @@ func main() {
 
 	handler := httpDelivery.NewHandler(authService)
 
+	http.HandleFunc("/register", handler.Register)
 	http.HandleFunc("/login", handler.Login)
 	http.HandleFunc("/welcome", handler.Welcome)
 
