@@ -1,4 +1,4 @@
-FROM golang:1.20-alpine AS builder
+FROM golang:1.24-alpine AS builder
 WORKDIR /app
 
 COPY go.mod go.sum ./
@@ -12,7 +12,6 @@ RUN apk add --no-cache ca-certificates
 
 WORKDIR /root/
 COPY --from=builder /app/auth-service .
-
 EXPOSE 8000
 
 ENTRYPOINT ["./auth-service"]

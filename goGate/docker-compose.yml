@@ -1,7 +1,8 @@
-version: '3.8'
 services:
-  postgres:
+  db:
     image: postgres:14
+    container_name: goGate-postgres
+    restart: always
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -9,25 +10,35 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5435:5432"
+    networks:
+      - goGate-network
 
   flyway:
     image: flyway/flyway:latest
-    command: -url=jdbc:postgresql://postgres:5432/authdb \
-      -user=postgres \
-      -password=postgres \
-      migrate
+    container_name: goGate-flyway
+    command:
+      - -url=jdbc:postgresql://db:5432/authdb
+      - -user=postgres
+      - -password=postgres
+      - migrate
     volumes:
       - ./migrations:/flyway/sql
     depends_on:
-      - postgres
+      - db
+    networks:
+      - goGate-network
 
   auth:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: goGate-auth
+    restart: always
     depends_on:
       - flyway
     environment:
-      DB_HOST: postgres
+      DB_HOST: db
       DB_PORT: 5432
       DB_USER: postgres
       DB_PASSWORD: postgres
@@ -35,3 +46,12 @@ services:
       JWT_SECRET: your_secret_key
     ports:
       - "8000:8000"
+    networks:
+      - goGate-network
+
+volumes:
+  db_data:
+
+networks:
+  goGate-network:
+    driver: bridge
