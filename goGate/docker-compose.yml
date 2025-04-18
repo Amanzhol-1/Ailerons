@@ -1,0 +1,37 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: authdb
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  flyway:
+    image: flyway/flyway:latest
+    command: -url=jdbc:postgresql://postgres:5432/authdb \
+      -user=postgres \
+      -password=postgres \
+      migrate
+    volumes:
+      - ./migrations:/flyway/sql
+    depends_on:
+      - postgres
+
+  auth:
+    build: .
+    depends_on:
+      - flyway
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: authdb
+      JWT_SECRET: your_secret_key
+    ports:
+      - "8000:8000"
