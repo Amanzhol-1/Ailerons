@@ -46,7 +46,7 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres
       DB_NAME: authdb
-      AUTH_SECRET: your_secret_key
+      AUTH_SECRET: secret_key
       HTTP_PORT: "8000"
     ports:
       - "8000:8000"
