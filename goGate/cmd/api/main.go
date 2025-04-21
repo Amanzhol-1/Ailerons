@@ -2,25 +2,76 @@ package main
 
 import (
 	"fmt"
+	"github.com/golang-jwt/jwt"
+	"log"
+
+	"github.com/joho/godotenv"
+	echojwt "github.com/labstack/echo-jwt/v4"
+	"github.com/labstack/echo/v4"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+
+	"goGate/internal/auth/config"
+	"goGate/internal/auth/delivery/http"
+	"goGate/internal/auth/middleware"
 	"goGate/internal/auth/repository"
 	"goGate/internal/auth/service"
-	"log"
-	"net/http"
-
-	httpDelivery "goGate/internal/auth/delivery/http"
 )
 
 func main() {
-	userRepo := repository.NewInMemoryUserRepo()
+	if err := godotenv.Load(); err != nil {
+		log.Println("Warning: .env file not found")
+	}
 
-	authService := service.NewAuthService(userRepo)
+	cfg, err := config.NewConfig()
+	if err != nil {
+		log.Fatalf("config error: %v", err)
+	}
 
-	handler := httpDelivery.NewHandler(authService)
+	dsn := fmt.Sprintf(
+		"host=%s user=%s password=%s dbname=%s port=%d sslmode=disable TimeZone=Asia/Almaty",
+		cfg.DBHost, cfg.DBUser, cfg.DBPassword, cfg.DBName, cfg.DBPort,
+	)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("failed to connect DB: %v", err)
+	}
 
-	http.HandleFunc("/register", handler.Register)
-	http.HandleFunc("/login", handler.Login)
-	http.HandleFunc("/welcome", handler.Welcome)
+	if err := db.AutoMigrate(
+		&repository.UserModel{},
+		&repository.CustomerProfileModel{},
+		&repository.DriverProfileModel{},
+	); err != nil {
+		log.Fatalf("migration failed: %v", err)
+	}
 
-	fmt.Println("Сервер запущен на порту :8000")
-	log.Fatal(http.ListenAndServe(":8000", nil))
+	userRepo := repository.NewGormUserRepo(db)
+	custRepo := repository.NewGormCustomerProfileRepo(db)
+	drvRepo := repository.NewGormDriverProfileRepo(db)
+
+	authSvc := service.NewAuthService(userRepo, []byte(cfg.AuthSecret))
+	profSvc := service.NewProfileService(custRepo, drvRepo, userRepo)
+
+	e := echo.New()
+	e.POST("/register", http.NewHandler(authSvc, profSvc).Register)
+	e.POST("/login", http.NewHandler(authSvc, profSvc).Login)
+
+	jwtMW := echojwt.WithConfig(echojwt.Config{
+		SigningKey:  []byte(cfg.AuthSecret),
+		TokenLookup: "header:Authorization",
+		ContextKey:  "user",
+		NewClaimsFunc: func(c echo.Context) jwt.Claims {
+			return &middleware.Claims{}
+		},
+	})
+
+	grp := e.Group("/profile", jwtMW)
+	h := http.NewHandler(authSvc, profSvc)
+	grp.GET("", h.GetProfile)
+	grp.POST("/customer", h.UpdateCustomer)
+	grp.POST("/driver", h.UpdateDriver)
+
+	addr := fmt.Sprintf(":%s", cfg.HTTPPort)
+	log.Printf("Auth service listening on %s", addr)
+	log.Fatal(e.Start(addr))
 }

@@ -1,81 +1,94 @@
 package http
 
 import (
-	"encoding/json"
 	"net/http"
-	"strings"
 
+	"goGate/internal/auth/domain"
+	"goGate/internal/auth/middleware"
 	"goGate/internal/auth/service"
+
+	"github.com/golang-jwt/jwt"
+	"github.com/labstack/echo/v4"
 )
 
 type Handler struct {
-	authService service.AuthService
+	authSvc service.AuthService
+	profSvc service.ProfileService
 }
 
-func NewHandler(authService service.AuthService) *Handler {
-	return &Handler{authService: authService}
+func NewHandler(a service.AuthService, p service.ProfileService) *Handler {
+	return &Handler{authSvc: a, profSvc: p}
 }
 
-type RegisterRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
-	var req RegisterRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "неверный запрос", http.StatusBadRequest)
-		return
+func (h *Handler) Register(c echo.Context) error {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
 	}
-	token, err := h.authService.Register(req.Username, req.Password)
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	token, err := h.authSvc.Register(req.Username, req.Password, req.Role)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": token})
+	return c.JSON(http.StatusOK, map[string]string{"token": token})
 }
 
-type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	var req LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "неверный запрос", http.StatusBadRequest)
-		return
+func (h *Handler) Login(c echo.Context) error {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
 	}
-
-	token, err := h.authService.Login(req.Username, req.Password)
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	token, err := h.authSvc.Login(req.Username, req.Password)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
-		return
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": token})
+	return c.JSON(http.StatusOK, map[string]string{"token": token})
 }
 
-func (h *Handler) Welcome(w http.ResponseWriter, r *http.Request) {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		http.Error(w, "токен не предоставлен", http.StatusUnauthorized)
-		return
-	}
-	parts := strings.Split(authHeader, "Bearer ")
-	if len(parts) != 2 {
-		http.Error(w, "неправильный формат токена", http.StatusUnauthorized)
-		return
-	}
-	tokenStr := parts[1]
-
-	_, err := h.authService.ValidateToken(tokenStr)
+func (h *Handler) GetProfile(c echo.Context) error {
+	t := c.Get("user").(*jwt.Token)
+	claims := t.Claims.(*middleware.Claims)
+	profile, err := h.profSvc.GetMyProfile(claims.Username)
 	if err != nil {
-		http.Error(w, "недействительный токен", http.StatusUnauthorized)
-		return
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	return c.JSON(http.StatusOK, profile)
+}
 
-	w.Write([]byte("Добро пожаловать!"))
+func (h *Handler) UpdateCustomer(c echo.Context) error {
+	t := c.Get("user").(*jwt.Token)
+	claims := t.Claims.(*middleware.Claims)
+	if claims.Role != "customer" {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
+	}
+	var p domain.CustomerProfile
+	if err := c.Bind(&p); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid"})
+	}
+	if err := h.profSvc.UpdateCustomerProfile(claims.Username, &p); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, p)
+}
+
+func (h *Handler) UpdateDriver(c echo.Context) error {
+	t := c.Get("user").(*jwt.Token)
+	claims := t.Claims.(*middleware.Claims)
+	if claims.Role != "driver" {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
+	}
+	var p domain.DriverProfile
+	if err := c.Bind(&p); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid"})
+	}
+	if err := h.profSvc.UpdateDriverProfile(claims.Username, &p); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, p)
 }

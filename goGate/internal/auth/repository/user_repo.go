@@ -3,34 +3,54 @@ package repository
 import (
 	"errors"
 	"goGate/internal/auth/domain"
+	"gorm.io/gorm"
 )
 
-type InMemoryUserRepo struct {
-	users  map[string]*domain.User
-	nextID int64
+type UserModel struct {
+	gorm.Model
+	Username string `gorm:"uniqueIndex;not null"`
+	Password string `gorm:"not null"`
+	Role     string `gorm:"not null"`
 }
 
-func NewInMemoryUserRepo() *InMemoryUserRepo {
-	users := map[string]*domain.User{
-		"user": {ID: 1, Username: "user", Password: "password"},
-	}
-	return &InMemoryUserRepo{users: users}
+func (UserModel) TableName() string {
+	return "users"
 }
 
-func (repo *InMemoryUserRepo) FindByUsername(username string) (*domain.User, error) {
-	user, ok := repo.users[username]
-	if !ok {
-		return nil, errors.New("пользователь не найден")
-	}
-	return user, nil
+type UserRepo interface {
+	FindByUsername(username string) (*domain.User, error)
+	Create(user *domain.User) error
 }
 
-func (repo *InMemoryUserRepo) Create(u *domain.User) error {
-	if _, exists := repo.users[u.Username]; exists {
-		return errors.New("пользователь уже существует")
+type GormUserRepo struct {
+	db *gorm.DB
+}
+
+func NewGormUserRepo(db *gorm.DB) *GormUserRepo {
+	return &GormUserRepo{db: db}
+}
+
+func (r *GormUserRepo) FindByUsername(username string) (*domain.User, error) {
+	var m UserModel
+	if err := r.db.Where("username = ?", username).First(&m).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("user not found")
+		}
+		return nil, err
 	}
-	u.ID = repo.nextID
-	repo.nextID++
-	repo.users[u.Username] = u
-	return nil
+	return &domain.User{
+		ID:       int64(m.ID),
+		Username: m.Username,
+		Password: m.Password,
+		Role:     m.Role,
+	}, nil
+}
+
+func (r *GormUserRepo) Create(u *domain.User) error {
+	m := UserModel{
+		Username: u.Username,
+		Password: u.Password,
+		Role:     u.Role,
+	}
+	return r.db.Create(&m).Error
 }

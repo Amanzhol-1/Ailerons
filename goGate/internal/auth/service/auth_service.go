@@ -2,85 +2,62 @@ package service
 
 import (
 	"errors"
-	"goGate/internal/auth/domain"
 	"time"
+
+	"goGate/internal/auth/domain"
+	"goGate/internal/auth/repository"
 
 	"github.com/golang-jwt/jwt"
 )
 
-var jwtKey = []byte("your_secret_key")
-
 type AuthService interface {
+	Register(username, password, role string) (string, error)
 	Login(username, password string) (string, error)
-	ValidateToken(tokenStr string) (*jwt.Token, error)
-	Register(username, password string) (string, error)
 }
 
 type authService struct {
-	userRepo domain.UserRepository
+	userRepo repository.UserRepo
+	jwtKey   []byte
 }
 
-func NewAuthService(repo domain.UserRepository) AuthService {
-	return &authService{userRepo: repo}
+func NewAuthService(repo repository.UserRepo, jwtKey []byte) AuthService {
+	return &authService{userRepo: repo, jwtKey: jwtKey}
 }
 
 type Claims struct {
 	Username string `json:"username"`
+	Role     string `json:"role"`
 	jwt.StandardClaims
 }
 
-func (s *authService) Login(username, password string) (string, error) {
-	user, err := s.userRepo.FindByUsername(username)
-	if err != nil {
+func (s *authService) Register(username, password, role string) (string, error) {
+	if role != "customer" && role != "driver" {
+		return "", errors.New("invalid role")
+	}
+	// TODO: hash password
+	u := &domain.User{Username: username, Password: password, Role: role}
+	if err := s.userRepo.Create(u); err != nil {
 		return "", err
 	}
-	if user.Password != password {
-		return "", errors.New("неверные учетные данные")
-	}
+	return s.createToken(u)
+}
 
-	expirationTime := time.Now().Add(15 * time.Minute)
+func (s *authService) Login(username, password string) (string, error) {
+	u, err := s.userRepo.FindByUsername(username)
+	if err != nil || u.Password != password {
+		return "", errors.New("invalid credentials")
+	}
+	return s.createToken(u)
+}
+
+func (s *authService) createToken(u *domain.User) (string, error) {
 	claims := &Claims{
-		Username: username,
+		Username: u.Username,
+		Role:     u.Role,
 		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expirationTime.Unix(),
+			ExpiresAt: time.Now().Add(24 * time.Hour).Unix(),
 		},
 	}
-
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenStr, err := token.SignedString(jwtKey)
-	if err != nil {
-		return "", err
-	}
-	return tokenStr, nil
-}
-
-func (s *authService) ValidateToken(tokenStr string) (*jwt.Token, error) {
-	claims := &Claims{}
-	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
-		return jwtKey, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if !token.Valid {
-		return nil, errors.New("недействительный токен")
-	}
-	return token, nil
-}
-
-func (s *authService) Register(username, password string) (string, error) {
-	if _, err := s.userRepo.FindByUsername(username); err == nil {
-		return "", errors.New("пользователь уже существует")
-	}
-
-	// TODO: Hash password
-	newUser := &domain.User{
-		Username: username,
-		Password: password,
-	}
-	if err := s.userRepo.Create(newUser); err != nil {
-		return "", err
-	}
-
-	return s.Login(username, password)
+	return token.SignedString(s.jwtKey)
 }
