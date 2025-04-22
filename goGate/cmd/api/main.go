@@ -37,13 +37,13 @@ func main() {
 		log.Fatalf("failed to connect DB: %v", err)
 	}
 
-	if err := db.AutoMigrate(
-		&repository.UserModel{},
-		&repository.CustomerProfileModel{},
-		&repository.DriverProfileModel{},
-	); err != nil {
-		log.Fatalf("migration failed: %v", err)
-	}
+	//if err := db.AutoMigrate(
+	//	&repository.UserModel{},
+	//	&repository.CustomerProfileModel{},
+	//	&repository.DriverProfileModel{},
+	//); err != nil {
+	//	log.Fatalf("migration failed: %v", err)
+	//}
 
 	userRepo := repository.NewGormUserRepo(db)
 	custRepo := repository.NewGormCustomerProfileRepo(db)
