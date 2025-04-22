@@ -7,7 +7,7 @@ import (
 	"goGate/internal/auth/domain"
 	"goGate/internal/auth/repository"
 
-	"github.com/golang-jwt/jwt"
+	jwt "github.com/golang-jwt/jwt/v4"
 )
 
 type AuthService interface {

@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/golang-jwt/jwt"
 	"log"
 
+	jwt "github.com/golang-jwt/jwt/v4"
 	"github.com/joho/godotenv"
 	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
