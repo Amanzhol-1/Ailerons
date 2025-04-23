@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 
 	jwt "github.com/golang-jwt/jwt/v4"
 	"github.com/joho/godotenv"
@@ -12,7 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"goGate/internal/auth/config"
-	"goGate/internal/auth/delivery/http"
+	handler "goGate/internal/auth/delivery/http"
 	"goGate/internal/auth/middleware"
 	"goGate/internal/auth/repository"
 	"goGate/internal/auth/service"
@@ -53,20 +54,23 @@ func main() {
 	profSvc := service.NewProfileService(custRepo, drvRepo, userRepo)
 
 	e := echo.New()
-	e.POST("/register", http.NewHandler(authSvc, profSvc).Register)
-	e.POST("/login", http.NewHandler(authSvc, profSvc).Login)
+	e.POST("/register", handler.NewHandler(authSvc, profSvc).Register)
+	e.POST("/login", handler.NewHandler(authSvc, profSvc).Login)
 
 	jwtMW := echojwt.WithConfig(echojwt.Config{
-		SigningKey:  []byte(cfg.AuthSecret),
-		TokenLookup: "header:Authorization",
-		ContextKey:  "user",
+		SigningKey: []byte(cfg.AuthSecret),
+		ContextKey: "user",
 		NewClaimsFunc: func(c echo.Context) jwt.Claims {
 			return &middleware.Claims{}
+		},
+		ErrorHandler: func(c echo.Context, err error) error {
+			c.Logger().Errorf("JWT error: %v", err)
+			return echo.NewHTTPError(http.StatusUnauthorized, "invalid or expired jwt")
 		},
 	})
 
 	grp := e.Group("/profile", jwtMW)
-	h := http.NewHandler(authSvc, profSvc)
+	h := handler.NewHandler(authSvc, profSvc)
 	grp.GET("", h.GetProfile)
 	grp.POST("/customer", h.UpdateCustomer)
 	grp.POST("/driver", h.UpdateDriver)
