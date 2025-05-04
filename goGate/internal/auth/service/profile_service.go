@@ -34,12 +34,14 @@ func (s *profileService) GetMyProfile(username string) (interface{}, error) {
 		if p == nil {
 			p = &domain.CustomerProfile{UserID: u.ID}
 		}
+		p.Role = u.Role
 		return p, nil
 	case "driver":
 		p, _ := s.drvRepo.GetByUserID(u.ID)
 		if p == nil {
 			p = &domain.DriverProfile{UserID: u.ID}
 		}
+		p.Role = u.Role
 		return p, nil
 	default:
 		return nil, errors.New("unknown role")
